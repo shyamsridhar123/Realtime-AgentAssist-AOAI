@@ -203,6 +203,49 @@ function setupSocketListeners() {
         showToast(`Error: ${error.message}`, 'error');
         console.error('Socket error:', error);
     });
+
+    // Realtime transcription events
+    socket.on('realtimeConnected', (data) => {
+        console.log('Realtime transcription connected:', data);
+        showToast('Real-time transcription activated', 'success');
+        // Update UI to show realtime is active
+        if (elements.audioStatus) {
+            elements.audioStatus.style.borderColor = '#28a745'; // Green border
+        }
+    });
+
+    socket.on('realtimeUnavailable', (data) => {
+        console.log('Realtime transcription unavailable:', data);
+        showToast('Realtime transcription unavailable - manual mode enabled', 'warning');
+        // Update UI to show manual mode
+        if (elements.audioStatus) {
+            elements.audioStatus.style.borderColor = '#ffc107'; // Yellow border
+        }
+    });
+
+    socket.on('realtimeError', (data) => {
+        console.error('Realtime transcription error:', data);
+        showToast(`Transcription error: ${data.message}`, 'error');
+        // Update UI to show error state
+        if (elements.audioStatus) {
+            elements.audioStatus.style.borderColor = '#dc3545'; // Red border
+        }
+    });
+
+    // Speech detection events
+    socket.on('speechStarted', () => {
+        console.log('Speech detection started');
+        if (elements.audioLevel) {
+            elements.audioLevel.style.backgroundColor = '#28a745'; // Green when speech detected
+        }
+    });
+
+    socket.on('speechStopped', () => {
+        console.log('Speech detection stopped');
+        if (elements.audioLevel) {
+            elements.audioLevel.style.backgroundColor = '#007bff'; // Blue when no speech
+        }
+    });
 }
 
 // Agent registration

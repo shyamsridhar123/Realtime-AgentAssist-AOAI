@@ -1,3 +1,4 @@
+const { AzureOpenAI } = require('openai');
 const EventEmitter = require('events');
 const Logger = require('../utils/Logger');
 
@@ -32,7 +33,14 @@ class ChatbotService extends EventEmitter {
     try {
       this.logger.info('Starting Chatbot Service...');
       
-      // Just set running to true for now, don't initialize Azure OpenAI client yet
+      // Initialize Azure OpenAI client
+      this.client = new AzureOpenAI({
+        endpoint: this.config.endpoint,
+        apiKey: this.config.apiKey,
+        apiVersion: this.config.apiVersion,
+        deployment: this.config.deployment
+      });
+      
       this.isRunning = true;
       this.logger.info('Chatbot Service started successfully');
       
@@ -109,15 +117,13 @@ Response format:
         content: question
       });
 
-      const result = await this.client.getChatCompletions(
-        this.config.deployment,
-        messages,
-        {
-          temperature: 0.3,
-          maxTokens: 300,
-          topP: 0.9
-        }
-      );
+      const result = await this.client.chat.completions.create({
+        model: this.config.deployment,
+        messages: messages,
+        temperature: 0.3,
+        max_tokens: 300,
+        top_p: 0.9
+      });
 
       const answer = result.choices[0].message.content;
       

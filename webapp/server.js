@@ -38,6 +38,11 @@ class AgentAssistWebApp {
     this.activeAgents = new Map();
     this.activeCalls = new Map();
     this.realtimeConnections = new Map(); // Store Azure OpenAI Realtime WebSocket connections
+    this.warnedSessions = new Set(); // Track sessions we've already warned about to avoid spam
+    this.speakerLearningData = { // Store learning data for speaker detection
+      patterns: {},
+      corrections: []
+    };
     
     this.setupMiddleware();
     this.setupRoutes();
@@ -130,11 +135,32 @@ class AgentAssistWebApp {
         
         // Create Azure OpenAI Realtime connection for this session
         try {
-          await this.createRealtimeConnection(sessionId, socket);
-          console.log(`Realtime transcription enabled for session ${sessionId}`);
+          const realtimeClient = await this.createRealtimeConnection(sessionId, socket);
+          if (realtimeClient) {
+            console.log(`Realtime transcription enabled for session ${sessionId}`);
+            socket.emit('realtimeConnected', {
+              sessionId: sessionId,
+              status: 'connected',
+              message: 'Real-time transcription is active'
+            });
+          } else {
+            console.log(`Realtime transcription not available for session ${sessionId} - using manual transcription`);
+            socket.emit('realtimeUnavailable', {
+              sessionId: sessionId,
+              status: 'unavailable',
+              message: 'Real-time transcription unavailable. Manual transcription enabled.',
+              fallback: true
+            });
+          }
         } catch (error) {
           console.error('Failed to create realtime connection:', error);
-          // Continue without realtime transcription
+          socket.emit('realtimeError', {
+            sessionId: sessionId,
+            status: 'error',
+            message: 'Failed to initialize real-time transcription',
+            error: error.message,
+            fallback: true
+          });
         }
         
         socket.emit('callStarted', {
@@ -197,10 +223,15 @@ class AgentAssistWebApp {
         // Close realtime connection if exists
         if (this.realtimeConnections.has(sessionId)) {
           const realtimeClient = this.realtimeConnections.get(sessionId);
-          if (realtimeClient) {
+          if (realtimeClient && realtimeClient.close) {
             realtimeClient.close();
           }
           this.realtimeConnections.delete(sessionId);
+        }
+        
+        // Clean up warned sessions
+        if (this.warnedSessions) {
+          this.warnedSessions.delete(sessionId);
         }
         
         // Update agent status
@@ -233,14 +264,36 @@ class AgentAssistWebApp {
         const { sessionId, audioData, timestamp } = data;
         
         if (!this.realtimeConnections.has(sessionId)) {
-          console.warn(`No realtime connection for session ${sessionId}`);
+          // Only log this warning once per session to avoid spam
+          if (!this.warnedSessions) {
+            this.warnedSessions = new Set();
+          }
+          
+          if (!this.warnedSessions.has(sessionId)) {
+            console.warn(`No realtime connection for session ${sessionId} - falling back to manual transcription`);
+            this.warnedSessions.add(sessionId);
+            
+            // Notify frontend that realtime transcription is not available
+            socket.emit('realtimeUnavailable', {
+              sessionId: sessionId,
+              message: 'Real-time transcription unavailable. Please use manual transcription.',
+              fallback: true
+            });
+          }
           return;
         }
         
         const realtimeClient = this.realtimeConnections.get(sessionId);
         
         if (!realtimeClient) {
-          console.warn(`Realtime client is null for session ${sessionId}`);
+          if (!this.warnedSessions) {
+            this.warnedSessions = new Set();
+          }
+          
+          if (!this.warnedSessions.has(sessionId)) {
+            console.warn(`Realtime client is null for session ${sessionId}`);
+            this.warnedSessions.add(sessionId);
+          }
           return;
         }
         
@@ -257,6 +310,13 @@ class AgentAssistWebApp {
           
         } catch (error) {
           console.error('Error sending audio chunk:', error);
+          // Remove the connection if it's not working
+          this.realtimeConnections.delete(sessionId);
+          socket.emit('realtimeError', {
+            sessionId: sessionId,
+            message: 'Real-time transcription connection failed',
+            error: error.message
+          });
         }
       });
 
@@ -274,14 +334,21 @@ class AgentAssistWebApp {
         // Find and update the transcript entry
         const transcriptEntry = call.transcript.find(t => t.id == transcriptId);
         if (transcriptEntry) {
+          const oldSpeaker = transcriptEntry.speaker;
           transcriptEntry.speaker = newSpeaker;
-          console.log(`Updated speaker for transcript ${transcriptId} to ${newSpeaker}`);
+          transcriptEntry.manuallyAssigned = true; // Mark as manually corrected
+          
+          console.log(`Updated speaker for transcript ${transcriptId} from ${oldSpeaker} to ${newSpeaker}`);
+          
+          // Learn from this correction to improve future detection
+          this.learnFromSpeakerCorrection(sessionId, transcriptEntry, oldSpeaker, newSpeaker);
           
           // Emit the updated transcript to all connected clients
           socket.emit('transcriptUpdated', {
             transcriptId: transcriptId,
             newSpeaker: newSpeaker,
-            sessionId: sessionId
+            sessionId: sessionId,
+            wasManuallyAssigned: true
           });
         }
       });
@@ -331,10 +398,15 @@ class AgentAssistWebApp {
             // Close realtime connection if exists
             if (this.realtimeConnections.has(agent.currentCall)) {
               const realtimeClient = this.realtimeConnections.get(agent.currentCall);
-              if (realtimeClient) {
+              if (realtimeClient && realtimeClient.close) {
                 realtimeClient.close();
               }
               this.realtimeConnections.delete(agent.currentCall);
+            }
+            
+            // Clean up warned sessions for this call
+            if (this.warnedSessions) {
+              this.warnedSessions.delete(agent.currentCall);
             }
           }
           this.activeAgents.delete(socket.id);
@@ -602,11 +674,20 @@ class AgentAssistWebApp {
   async createRealtimeConnection(sessionId, socket) {
     try {
       // Debug environment variables
+      console.log('Creating realtime connection for session:', sessionId);
       console.log('Realtime Speech Deployment:', process.env.AZURE_OPENAI_LLM_REALTIME_SPEECH_DEPLOYMENT);
       console.log('Realtime Speech Model:', process.env.AZURE_OPENAI_LLM_REALTIME_SPEECH_MODEL);
       console.log('Regular API Version:', process.env.AZURE_OPENAI_API_VERSION);
       console.log('Realtime API Version:', process.env.AZURE_OPENAI_REALTIME_API_VERSION);
       console.log('Endpoint:', process.env.AZURE_OPENAI_ENDPOINT);
+      
+      // Check required environment variables
+      if (!process.env.AZURE_OPENAI_ENDPOINT) {
+        throw new Error('AZURE_OPENAI_ENDPOINT environment variable is required');
+      }
+      if (!process.env.AZURE_OPENAI_KEY) {
+        throw new Error('AZURE_OPENAI_KEY environment variable is required');
+      }
       
       // Create Azure OpenAI client for Realtime - use the specific API version for Realtime Speech
       const realtimeApiVersion = process.env.AZURE_OPENAI_REALTIME_API_VERSION || "2024-10-01-preview";
@@ -623,13 +704,18 @@ class AgentAssistWebApp {
       });
       
       // Create the realtime client using Azure OpenAI
+      console.log('Creating OpenAI Realtime WebSocket client...');
       const realtimeClient = await OpenAIRealtimeWS.azure(azureOpenAIClient);
+      
+      if (!realtimeClient) {
+        throw new Error('Failed to create realtime client - client is null');
+      }
       
       console.log('Connecting to Azure OpenAI Realtime for session:', sessionId);
       
       // Set up event handlers
       realtimeClient.socket.on('open', () => {
-        console.log(`Azure OpenAI Realtime connection opened for session ${sessionId}`);
+        console.log(`✅ Azure OpenAI Realtime connection opened for session ${sessionId}`);
         
         // Send session configuration
         realtimeClient.send({
@@ -656,15 +742,19 @@ class AgentAssistWebApp {
       // Handle transcription completion
       realtimeClient.on('conversation.item.input_audio_transcription.completed', (event) => {
         if (event.transcript) {
+          // Detect speaker based on conversation patterns
+          const detectedSpeaker = this.detectSpeaker(sessionId, event.transcript);
+          
           const transcriptData = {
             text: event.transcript,
             timestamp: new Date().toISOString(),
-            speaker: 'Customer', // Default to customer, can be enhanced with speaker detection
+            speaker: detectedSpeaker,
             confidence: 0.95,
-            id: Date.now()
+            id: Date.now(),
+            speakerConfidence: 0.8 // Confidence in speaker detection
           };
           
-          console.log('Transcription:', transcriptData.text);
+          console.log('Transcription:', transcriptData.text, '- Speaker:', detectedSpeaker);
           
           // Add to call transcript
           if (this.activeCalls.has(sessionId)) {
@@ -690,28 +780,45 @@ class AgentAssistWebApp {
       });
       
       realtimeClient.on('error', (error) => {
-        console.error('Azure OpenAI Realtime client error:', error);
+        console.error('❌ Azure OpenAI Realtime client error:', error);
         socket.emit('error', { 
           message: 'Realtime transcription connection error', 
           details: error.message 
         });
-      });
-      
-      realtimeClient.socket.on('close', () => {
-        console.log(`Azure OpenAI Realtime connection closed for session ${sessionId}`);
+        
+        // Remove the failed connection
         this.realtimeConnections.delete(sessionId);
       });
       
+      realtimeClient.socket.on('close', () => {
+        console.log(`🔌 Azure OpenAI Realtime connection closed for session ${sessionId}`);
+        this.realtimeConnections.delete(sessionId);
+      });
+      
+      realtimeClient.socket.on('error', (error) => {
+        console.error(`❌ WebSocket error for session ${sessionId}:`, error);
+        this.realtimeConnections.delete(sessionId);
+        socket.emit('realtimeError', {
+          sessionId: sessionId,
+          message: 'WebSocket connection failed',
+          error: error.message
+        });
+      });
+      
       this.realtimeConnections.set(sessionId, realtimeClient);
+      console.log('✅ Realtime connection established and stored for session:', sessionId);
       return realtimeClient;
       
     } catch (error) {
-      console.error('Error creating realtime connection:', error);
+      console.error('❌ Error creating realtime connection:', error);
+      console.error('Stack trace:', error.stack);
       
-      // Emit error to frontend but don't throw - allow the call to continue without realtime transcription
-      socket.emit('error', { 
+      // Emit detailed error to frontend
+      socket.emit('realtimeError', { 
+        sessionId: sessionId,
         message: 'Realtime transcription unavailable', 
-        details: 'Azure OpenAI Realtime Speech endpoint not available. Please check your deployment configuration.',
+        details: error.message,
+        suggestion: 'Please check your Azure OpenAI Realtime Speech deployment configuration.',
         fallback: 'Manual transcription can be used instead.'
       });
       
@@ -730,6 +837,157 @@ class AgentAssistWebApp {
     // TODO: Implement Azure Speech Services WebSocket connection
     // This would use the Speech SDK to create a real-time recognition session
     throw new Error('Azure Speech Services fallback not implemented yet');
+  }
+
+  detectSpeaker(sessionId, transcript) {
+    const call = this.activeCalls.get(sessionId);
+    if (!call) return 'Agent'; // Default to Agent if no call found
+    
+    const recentTranscripts = call.transcript.slice(-3); // Look at last 3 entries
+    const currentTranscript = transcript.toLowerCase().trim();
+    
+    // First, check if we have learned patterns for this transcript
+    const learnedDetection = this.getImprovedSpeakerDetection(transcript);
+    if (learnedDetection && learnedDetection.confidence > 0.7) {
+      console.log(`Using learned pattern: ${learnedDetection.speaker} (confidence: ${learnedDetection.confidence})`);
+      return learnedDetection.speaker;
+    }
+    
+    // Agent greeting patterns - usually first speaker
+    const agentGreetings = [
+      'hello', 'hi', 'good morning', 'good afternoon', 'thank you for calling', 
+      'how can i help', 'how may i assist', 'what can i do for you',
+      'this is', 'speaking', 'my name is', 'welcome to', 'you have reached',
+      'welcome', 'help you'
+    ];
+    
+    // Customer inquiry patterns
+    const customerPatterns = [
+      'i have a problem', 'i need help', 'my account', 'i want to', 'i would like',
+      'can you help', 'i am calling about', 'i have an issue', 'i cannot',
+      'my service', 'my bill', 'my payment', 'yes', 'no', 'okay', 'sure'
+    ];
+    
+    // If this is the first transcript, it's likely the agent greeting
+    if (recentTranscripts.length === 0) {
+      return 'Agent';
+    }
+    
+    // Check for agent greeting patterns
+    const hasAgentGreeting = agentGreetings.some(pattern => 
+      currentTranscript.includes(pattern)
+    );
+    
+    console.log(`🔍 DEBUG Speaker Detection for: "${currentTranscript}"`);
+    console.log(`🔍 Recent transcripts count: ${recentTranscripts.length}`);
+    console.log(`🔍 Agent greeting match: ${hasAgentGreeting}`);
+    console.log(`🔍 Checked patterns:`, agentGreetings.map(p => `"${p}": ${currentTranscript.includes(p)}`));
+    
+    if (hasAgentGreeting) {
+      console.log(`✅ Detected as Agent due to greeting pattern`);
+      return 'Agent';
+    }
+    
+    // Check for customer inquiry patterns
+    const hasCustomerPattern = customerPatterns.some(pattern => 
+      currentTranscript.includes(pattern)
+    );
+    
+    console.log(`🔍 Customer pattern match: ${hasCustomerPattern}`);
+    
+    if (hasCustomerPattern) {
+      console.log(`❌ Detected as Customer due to inquiry pattern`);
+      return 'Customer';
+    }
+    
+    // Look at conversation flow - if last speaker was Agent, this is likely Customer
+    if (recentTranscripts.length > 0) {
+      const lastSpeaker = recentTranscripts[recentTranscripts.length - 1].speaker;
+      
+      console.log(`🔍 Last speaker was: ${lastSpeaker}`);
+      
+      // Simple alternating pattern detection
+      if (lastSpeaker === 'Agent') {
+        console.log(`❌ Detected as Customer due to alternating pattern (last was Agent)`);
+        return 'Customer';
+      } else if (lastSpeaker === 'Customer') {
+        console.log(`✅ Detected as Agent due to alternating pattern (last was Customer)`);
+        return 'Agent';
+      }
+    }
+    
+    // Default fallback based on transcript length and patterns
+    // Shorter utterances after agent speech are often customer responses
+    if (currentTranscript.length < 20 && recentTranscripts.length > 0) {
+      const lastSpeaker = recentTranscripts[recentTranscripts.length - 1].speaker;
+      return lastSpeaker === 'Agent' ? 'Customer' : 'Agent';
+    }
+    
+    // Default to Agent (since agents typically do more talking in calls)
+    console.log(`✅ Defaulting to Agent (fallback)`);
+    return 'Agent';
+  }
+
+  learnFromSpeakerCorrection(sessionId, transcriptEntry, oldSpeaker, correctSpeaker) {
+    // Store learning data for improving future speaker detection
+    if (!this.speakerLearningData) {
+      this.speakerLearningData = {
+        patterns: {},
+        corrections: []
+      };
+    }
+    
+    const text = transcriptEntry.text.toLowerCase();
+    const words = text.split(' ').slice(0, 5); // First 5 words are often indicative
+    
+    // Store correction for analysis
+    this.speakerLearningData.corrections.push({
+      sessionId: sessionId,
+      text: text,
+      predictedSpeaker: oldSpeaker,
+      actualSpeaker: correctSpeaker,
+      timestamp: new Date(),
+      firstWords: words.join(' ')
+    });
+    
+    // Update patterns based on corrections
+    const key = words.join(' ');
+    if (!this.speakerLearningData.patterns[key]) {
+      this.speakerLearningData.patterns[key] = { Agent: 0, Customer: 0 };
+    }
+    this.speakerLearningData.patterns[key][correctSpeaker]++;
+    
+    console.log(`Learning: "${key}" is more likely to be ${correctSpeaker}`);
+    
+    // Keep only last 100 corrections to avoid memory issues
+    if (this.speakerLearningData.corrections.length > 100) {
+      this.speakerLearningData.corrections = this.speakerLearningData.corrections.slice(-100);
+    }
+  }
+
+  getImprovedSpeakerDetection(transcript) {
+    if (!this.speakerLearningData || !this.speakerLearningData.patterns) {
+      return null;
+    }
+    
+    const text = transcript.toLowerCase();
+    const words = text.split(' ').slice(0, 5);
+    const key = words.join(' ');
+    
+    const pattern = this.speakerLearningData.patterns[key];
+    if (pattern) {
+      // Return the speaker with higher confidence based on learning
+      const agentScore = pattern.Agent || 0;
+      const customerScore = pattern.Customer || 0;
+      
+      if (agentScore > customerScore) {
+        return { speaker: 'Agent', confidence: agentScore / (agentScore + customerScore) };
+      } else if (customerScore > agentScore) {
+        return { speaker: 'Customer', confidence: customerScore / (agentScore + customerScore) };
+      }
+    }
+    
+    return null;
   }
 
   start(port = 3000) {
