@@ -9,11 +9,13 @@ body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: #f8f9fa;
     color: #333;
+    overflow-x: hidden;
 }
 
 .container-fluid {
     max-width: 1400px;
     margin: 0 auto;
+    padding: 0.5rem;
 }
 
 /* Header */
@@ -33,6 +35,7 @@ body {
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     transition: box-shadow 0.2s ease;
+    margin-bottom: 1rem;
 }
 
 .card:hover {
@@ -48,7 +51,7 @@ body {
 }
 
 .card-body {
-    padding: 1rem;
+    padding: 0.75rem;
 }
 
 /* Transcript Container */
@@ -215,38 +218,109 @@ body {
 }
 
 /* Analytics Cards */
+
 .analytics-card {
     text-align: center;
-    padding: 1rem;
-    border-radius: 6px;
-    background-color: #fff;
+    padding: 0.4rem 0.3rem;
+    border-radius: 8px;
+    background-color: #f8f9fa;
     border: 1px solid #dee2e6;
     transition: all 0.2s ease;
+    margin-bottom: 0.25rem;
+    min-height: 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .analytics-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background-color: #fff;
 }
+
 
 .analytics-label {
-    font-size: 0.8rem;
-    color: #6c757d;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
+    font-size: 0.75rem;
+    color: #495057;
+    margin-bottom: 0.2rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
+
+    
 
 .analytics-value {
-    font-size: 1.2rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 0.1rem;
+    color: #212529;
+    min-height: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.analytics-indicator {
-    height: 4px;
-    border-radius: 2px;
-    background-color: #dee2e6;
-    transition: background-color 0.3s ease;
+/* Specific Analytics Card Types */
+.sentiment-card {
+    border-left: 4px solid #28a745;
+}
+
+.sentiment-card .analytics-value {
+    color: #28a745;
+}
+
+.call-reason-card {
+    border-left: 4px solid #007bff;
+}
+
+.call-reason-card .analytics-value {
+    color: #007bff;
+}
+
+.escalation-card {
+    border-left: 4px solid #ffc107;
+}
+
+.escalation-card .analytics-value {
+    color: #ffc107;
+}
+
+.escalation-card.high-risk {
+    border-left-color: #dc3545;
+}
+
+.escalation-card.high-risk .analytics-value {
+    color: #dc3545;
+}
+
+/* Tip insight styling */
+.tip-insight {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.tip-insight .insight-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.tip-insight .insight-content {
+    flex: 1;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.tip-insight strong {
+    color: #495057;
 }
 
 /* Sentiment Colors */
@@ -353,8 +427,11 @@ body {
 
 /* Insights */
 .insights-container {
-    max-height: 200px;
+    max-height: 300px;
     overflow-y: auto;
+    padding: 0.5rem;
+    min-height: 150px;
+    height: auto;
 }
 
 .insight-item {
@@ -363,6 +440,32 @@ body {
     border-radius: 6px;
     background-color: #f8f9fa;
     border-left: 3px solid #007bff;
+    transition: all 0.2s ease;
+}
+
+.insight-item:hover {
+    background-color: #e9ecef;
+    transform: translateX(2px);
+}
+
+.insight-item.insight-high-priority {
+    border-left-color: #dc3545;
+    background-color: #fef5f5;
+}
+
+.insight-item.insight-medium-priority {
+    border-left-color: #ffc107;
+    background-color: #fffef0;
+}
+
+.insight-item.insight-customer-insight {
+    border-left-color: #0dcaf0;
+    background-color: #f0f9ff;
+}
+
+.insight-item.insight-agent-coaching {
+    border-left-color: #198754;
+    background-color: #f0f8f0;
 }
 
 .insight-type {
@@ -595,18 +698,76 @@ body {
     transform: rotate(-90deg);
 }
 
+/* Main layout - remove fixed heights to prevent white space */
+.row {
+    min-height: calc(100vh - 100px);
+}
+
+.col-md-3, .col-md-6 {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Card specific height management */
+.card {
+    height: fit-content;
+    flex: 0 0 auto;
+    margin-bottom: 1rem;
+}
+
+/* Make sure content areas fit properly */
+.card-body {
+    padding: 1rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
-    .col-md-3,
-    .col-md-6 {
+    .container-fluid {
+        padding: 0.5rem;
+    }
+    
+    .card {
         margin-bottom: 1rem;
     }
     
-    .transcript-container {
-        height: 300px;
+    .row {
+        min-height: calc(100vh - 80px);
     }
     
-    .chat-messages {
+    .col-md-3, .col-md-6 {
+        height: auto;
+        overflow-y: visible;
+    }
+    
+    .insights-container {
+        max-height: 250px;
+        min-height: 150px;
+    }
+    
+    .transcript-container {
+        height: 250px;
+    }
+    
+    .analytics-card {
+        margin-bottom: 1rem;
+    }
+    
+    .navbar-brand {
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .row {
+        min-height: calc(100vh - 60px);
+    }
+    
+    .insights-container {
+        max-height: 200px;
+        min-height: 120px;
+    }
+    
+    .transcript-container {
         height: 200px;
     }
 }
@@ -671,6 +832,24 @@ body {
 
 .transcript-container::-webkit-scrollbar-thumb:hover,
 .chat-messages::-webkit-scrollbar-thumb:hover,
+.insights-container::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+.insights-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.insights-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.insights-container::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
 .insights-container::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
 }

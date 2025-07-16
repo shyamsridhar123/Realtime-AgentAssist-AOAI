@@ -28,9 +28,8 @@
         </header>
 
         <!-- Main Content -->
-        <div class="row">
-            <!-- Left Column - Agent Setup & Call Controls -->
-            <div class="col-md-3">
+        <div class="row">            <!-- Left Column - Agent Setup & Call Controls -->
+            <div class="col-md-3 d-flex flex-column">
                 <div class="card mb-3">
                     <div class="card-header">
                         <h5>Agent Setup</h5>
@@ -111,8 +110,8 @@
             </div>
 
             <!-- Middle Column - Transcript & Analytics -->
-            <div class="col-md-6">
-                <div class="card mb-3">
+            <div class="col-md-6 d-flex flex-column">
+                <div class="card mb-2">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5>Live Transcript</h5>
                         <small class="text-muted">Session: <span id="sessionId">Not Active</span></small>
@@ -124,29 +123,43 @@
                     </div>
                 </div>
 
+                <div class="card mb-2">
+                    <div class="card-header">
+                        <h5>Smart Insights</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="insights" class="insights-container">
+                            <div class="insight-item">
+                                <div class="insight-type">💡 Tip</div>
+                                <div class="insight-content">Start a call to get real-time insights</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-header">
                         <h5>Real-time Analytics</h5>
                     </div>
-                    <div class="card-body">
-                        <div class="row">
+                    <div class="card-body py-2">
+                        <div class="row g-2">
                             <div class="col-md-4">
                                 <div class="analytics-card sentiment-card">
                                     <div class="analytics-label">Sentiment</div>
-                                    <div class="analytics-value" id="sentimentValue">-</div>
+                                    <div class="analytics-value" id="sentimentValue">Ready</div>
                                     <div class="analytics-indicator" id="sentimentIndicator"></div>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="analytics-card call-reason-card">
                                     <div class="analytics-label">Call Reason</div>
-                                    <div class="analytics-value" id="callReasonValue">-</div>
+                                    <div class="analytics-value" id="callReasonValue">Start call</div>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="analytics-card escalation-card">
                                     <div class="analytics-label">Escalation Risk</div>
-                                    <div class="analytics-value" id="escalationValue">-</div>
+                                    <div class="analytics-value" id="escalationValue">Low</div>
                                     <div class="analytics-indicator" id="escalationIndicator"></div>
                                 </div>
                             </div>
@@ -156,7 +169,7 @@
             </div>
 
             <!-- Right Column - Agent Chatbot & Insights -->
-            <div class="col-md-3">
+            <div class="col-md-3 d-flex flex-column">
                 <div class="card mb-3">
                     <div class="card-header">
                         <h5>Agent Chatbot</h5>
@@ -217,20 +230,6 @@
                                 <button class="btn btn-outline-primary" id="sendChatMessage">
                                     Send
                                 </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <h5>Smart Insights</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="insights" class="insights-container">
-                            <div class="insight-item">
-                                <div class="insight-type">💡 Tip</div>
-                                <div class="insight-content">Start a call to get real-time insights</div>
                             </div>
                         </div>
                     </div>

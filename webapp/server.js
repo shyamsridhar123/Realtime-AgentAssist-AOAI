@@ -7,19 +7,25 @@ const socketIo = require('socket.io');
 const path = require('path');
 const cors = require('cors');
 
+// Import Winston logger
+const LoggerClass = require('../src/utils/Logger');
+const Logger = new LoggerClass('WebApp');
+
 // Debug environment variables
-console.log('Environment variables loaded:');
-console.log('AZURE_OPENAI_ENDPOINT:', process.env.AZURE_OPENAI_ENDPOINT ? 'Set' : 'Missing');
-console.log('AZURE_OPENAI_KEY:', process.env.AZURE_OPENAI_KEY ? 'Set' : 'Missing');
-console.log('AZURE_OPENAI_API_VERSION:', process.env.AZURE_OPENAI_API_VERSION ? 'Set' : 'Missing');
-console.log('AZURE_OPENAI_REALTIME_API_VERSION:', process.env.AZURE_OPENAI_REALTIME_API_VERSION ? 'Set' : 'Missing');
-console.log('AZURE_OPENAI_LLM_REALTIME_SPEECH_DEPLOYMENT:', process.env.AZURE_OPENAI_LLM_REALTIME_SPEECH_DEPLOYMENT ? 'Set' : 'Missing');
+Logger.debug('Environment variables loaded:');
+Logger.debug(`AZURE_OPENAI_ENDPOINT: ${process.env.AZURE_OPENAI_ENDPOINT ? 'Set' : 'Missing'}`);
+Logger.debug(`AZURE_OPENAI_KEY: ${process.env.AZURE_OPENAI_KEY ? 'Set' : 'Missing'}`);
+Logger.debug(`AZURE_OPENAI_API_VERSION: ${process.env.AZURE_OPENAI_API_VERSION ? 'Set' : 'Missing'}`);
+Logger.debug(`AZURE_OPENAI_REALTIME_API_VERSION: ${process.env.AZURE_OPENAI_REALTIME_API_VERSION ? 'Set' : 'Missing'}`);
+Logger.debug(`AZURE_OPENAI_LLM_REALTIME_SPEECH_DEPLOYMENT: ${process.env.AZURE_OPENAI_LLM_REALTIME_SPEECH_DEPLOYMENT ? 'Set' : 'Missing'}`);
 
 const { AzureOpenAI } = require('openai');
 const { OpenAIRealtimeWS } = require('openai/beta/realtime/ws');
 
 class AgentAssistWebApp {
   constructor() {
+    Logger.info('Initializing Agent Assist WebApp...');
+    
     this.app = express();
     this.server = http.createServer(this.app);
     this.io = socketIo(this.server, {
@@ -86,7 +92,7 @@ class AgentAssistWebApp {
 
   setupSocketHandlers() {
     this.io.on('connection', (socket) => {
-      console.log(`Agent connected: ${socket.id}`);
+      Logger.info(`Agent connected: ${socket.id}`);
       
       // Register agent
       socket.on('registerAgent', (agentData) => {
@@ -105,7 +111,7 @@ class AgentAssistWebApp {
           status: 'connected'
         });
         
-        console.log(`Agent registered: ${agentData.name || socket.id}`);
+        Logger.info(`Agent registered: ${agentData.name || socket.id}`);
       });
 
       // Start call session
@@ -137,14 +143,14 @@ class AgentAssistWebApp {
         try {
           const realtimeClient = await this.createRealtimeConnection(sessionId, socket);
           if (realtimeClient) {
-            console.log(`Realtime transcription enabled for session ${sessionId}`);
+            Logger.info(`Realtime transcription enabled for session ${sessionId}`);
             socket.emit('realtimeConnected', {
               sessionId: sessionId,
               status: 'connected',
               message: 'Real-time transcription is active'
             });
           } else {
-            console.log(`Realtime transcription not available for session ${sessionId} - using manual transcription`);
+            Logger.warn(`Realtime transcription not available for session ${sessionId} - using manual transcription`);
             socket.emit('realtimeUnavailable', {
               sessionId: sessionId,
               status: 'unavailable',
@@ -153,7 +159,7 @@ class AgentAssistWebApp {
             });
           }
         } catch (error) {
-          console.error('Failed to create realtime connection:', error);
+          Logger.error('Failed to create realtime connection:', error);
           socket.emit('realtimeError', {
             sessionId: sessionId,
             status: 'error',
@@ -168,7 +174,7 @@ class AgentAssistWebApp {
           status: 'active'
         });
         
-        console.log(`Call started: ${sessionId} by agent ${socket.id}`);
+        Logger.info(`Call started: ${sessionId} by agent ${socket.id}`);
       });
 
       // Process audio transcript
@@ -715,7 +721,7 @@ class AgentAssistWebApp {
       
       // Set up event handlers
       realtimeClient.socket.on('open', () => {
-        console.log(`✅ Azure OpenAI Realtime connection opened for session ${sessionId}`);
+        Logger.info(`✅ Azure OpenAI Realtime connection opened for session ${sessionId}`);
         
         // Send session configuration
         realtimeClient.send({
@@ -754,7 +760,7 @@ class AgentAssistWebApp {
             speakerConfidence: 0.8 // Confidence in speaker detection
           };
           
-          console.log('Transcription:', transcriptData.text, '- Speaker:', detectedSpeaker);
+          Logger.info(`Transcription: ${transcriptData.text} - Speaker: ${detectedSpeaker}`);
           
           // Add to call transcript
           if (this.activeCalls.has(sessionId)) {
@@ -849,7 +855,7 @@ class AgentAssistWebApp {
     // First, check if we have learned patterns for this transcript
     const learnedDetection = this.getImprovedSpeakerDetection(transcript);
     if (learnedDetection && learnedDetection.confidence > 0.7) {
-      console.log(`Using learned pattern: ${learnedDetection.speaker} (confidence: ${learnedDetection.confidence})`);
+      Logger.debug(`Using learned pattern: ${learnedDetection.speaker} (confidence: ${learnedDetection.confidence})`);
       return learnedDetection.speaker;
     }
     
@@ -878,13 +884,13 @@ class AgentAssistWebApp {
       currentTranscript.includes(pattern)
     );
     
-    console.log(`🔍 DEBUG Speaker Detection for: "${currentTranscript}"`);
-    console.log(`🔍 Recent transcripts count: ${recentTranscripts.length}`);
-    console.log(`🔍 Agent greeting match: ${hasAgentGreeting}`);
-    console.log(`🔍 Checked patterns:`, agentGreetings.map(p => `"${p}": ${currentTranscript.includes(p)}`));
+    Logger.debug(`🔍 DEBUG Speaker Detection for: "${currentTranscript}"`);
+    Logger.debug(`🔍 Recent transcripts count: ${recentTranscripts.length}`);
+    Logger.debug(`🔍 Agent greeting match: ${hasAgentGreeting}`);
+    Logger.debug(`🔍 Checked patterns: ${agentGreetings.map(p => `"${p}": ${currentTranscript.includes(p)}`).join(', ')}`);
     
     if (hasAgentGreeting) {
-      console.log(`✅ Detected as Agent due to greeting pattern`);
+      Logger.info(`✅ Detected as Agent due to greeting pattern`);
       return 'Agent';
     }
     
@@ -893,10 +899,10 @@ class AgentAssistWebApp {
       currentTranscript.includes(pattern)
     );
     
-    console.log(`🔍 Customer pattern match: ${hasCustomerPattern}`);
+    Logger.debug(`🔍 Customer pattern match: ${hasCustomerPattern}`);
     
     if (hasCustomerPattern) {
-      console.log(`❌ Detected as Customer due to inquiry pattern`);
+      Logger.info(`❌ Detected as Customer due to inquiry pattern`);
       return 'Customer';
     }
     
@@ -904,14 +910,14 @@ class AgentAssistWebApp {
     if (recentTranscripts.length > 0) {
       const lastSpeaker = recentTranscripts[recentTranscripts.length - 1].speaker;
       
-      console.log(`🔍 Last speaker was: ${lastSpeaker}`);
+      Logger.debug(`🔍 Last speaker was: ${lastSpeaker}`);
       
       // Simple alternating pattern detection
       if (lastSpeaker === 'Agent') {
-        console.log(`❌ Detected as Customer due to alternating pattern (last was Agent)`);
+        Logger.info(`❌ Detected as Customer due to alternating pattern (last was Agent)`);
         return 'Customer';
       } else if (lastSpeaker === 'Customer') {
-        console.log(`✅ Detected as Agent due to alternating pattern (last was Customer)`);
+        Logger.info(`✅ Detected as Agent due to alternating pattern (last was Customer)`);
         return 'Agent';
       }
     }
@@ -924,7 +930,7 @@ class AgentAssistWebApp {
     }
     
     // Default to Agent (since agents typically do more talking in calls)
-    console.log(`✅ Defaulting to Agent (fallback)`);
+    Logger.info(`✅ Defaulting to Agent (fallback)`);
     return 'Agent';
   }
 
@@ -992,9 +998,9 @@ class AgentAssistWebApp {
 
   start(port = 3000) {
     this.server.listen(port, () => {
-      console.log(`🚀 Real-Time Agent Assist Web App running on http://localhost:${port}`);
-      console.log(`📊 Dashboard: http://localhost:${port}`);
-      console.log(`🔧 Health Check: http://localhost:${port}/health`);
+      Logger.info(`🚀 Real-Time Agent Assist Web App running on http://localhost:${port}`);
+      Logger.info(`📊 Dashboard: http://localhost:${port}`);
+      Logger.info(`🔧 Health Check: http://localhost:${port}/health`);
     });
   }
 }

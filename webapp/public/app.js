@@ -80,6 +80,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSocketListeners();
     showToast('Welcome to Agent Assist Dashboard', 'info');
     
+    // Initialize analytics with default content
+    initializeAnalytics();
+    
     // Debug current speaker state
     console.log('Initial speaker state:', state.currentSpeaker);
     console.log('Agent radio checked:', elements.speakerAgent?.checked);
@@ -583,25 +586,66 @@ function updateInsights(insights) {
     elements.insights.innerHTML = '';
     
     if (!insights || insights.length === 0) {
-        elements.insights.innerHTML = '<div class="insight-item"><div class="insight-type">No insights</div><div class="insight-content">Continue conversation to get insights</div></div>';
+        elements.insights.innerHTML = '<div class="insight-item"><div class="insight-type">💡 No insights</div><div class="insight-content">Continue conversation to get insights</div></div>';
         return;
     }
     
     insights.forEach(insight => {
         const insightElement = document.createElement('div');
-        insightElement.className = 'insight-item';
+        let className = 'insight-item';
+        
+        // Add priority-based classes
+        if (insight.priority === 'high') {
+            className += ' insight-high-priority';
+        } else if (insight.priority === 'medium') {
+            className += ' insight-medium-priority';
+        }
+        
+        // Add type-based classes
+        if (insight.type === 'customer_insight') {
+            className += ' insight-customer-insight';
+        } else if (insight.type === 'agent_coaching') {
+            className += ' insight-agent-coaching';
+        }
+        
+        insightElement.className = className;
         
         // Handle both 'message' and 'content' properties for backward compatibility
         const content = insight.message || insight.content || 'No content available';
         const type = insight.type || 'info';
         
+        // Add appropriate emoji based on type
+        let typeDisplay = '';
+        switch(type) {
+            case 'customer_insight':
+                typeDisplay = '👤 Customer Insight';
+                break;
+            case 'agent_coaching':
+                typeDisplay = '🎯 Agent Coaching';
+                break;
+            case 'sentiment_alert':
+                typeDisplay = '⚠️ Sentiment Alert';
+                break;
+            case 'call_progress':
+                typeDisplay = '⏱️ Call Progress';
+                break;
+            case 'system_message':
+                typeDisplay = '🔧 System';
+                break;
+            default:
+                typeDisplay = '💡 ' + type;
+        }
+        
         insightElement.innerHTML = `
-            <div class="insight-type">${type}</div>
+            <div class="insight-type">${typeDisplay}</div>
             <div class="insight-content">${content}</div>
         `;
         
         elements.insights.appendChild(insightElement);
     });
+    
+    // Scroll to bottom to show latest insights
+    elements.insights.scrollTop = elements.insights.scrollHeight;
 }
 
 // Context Panel Functions
@@ -1018,6 +1062,36 @@ function showToast(message, type = 'info') {
     elements.toastMessage.textContent = message;
     
     toast.show();
+}
+
+// Initialize analytics with default content
+function initializeAnalytics() {
+    if (elements.sentimentValue) {
+        elements.sentimentValue.textContent = 'Ready';
+        elements.sentimentValue.style.color = '#6c757d';
+    }
+    
+    if (elements.callReasonValue) {
+        elements.callReasonValue.textContent = 'Start call';
+        elements.callReasonValue.style.color = '#6c757d';
+    }
+    
+    if (elements.escalationValue) {
+        elements.escalationValue.textContent = 'Low';
+        elements.escalationValue.style.color = '#28a745';
+    }
+    
+    // Initialize insights with helpful tip
+    if (elements.insights) {
+        elements.insights.innerHTML = `
+            <div class="insight-item tip-insight">
+                <div class="insight-icon">💡</div>
+                <div class="insight-content">
+                    <strong>Tip:</strong> Start a call to get real-time AI insights and analytics
+                </div>
+            </div>
+        `;
+    }
 }
 
 // Export for debugging
